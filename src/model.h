@@ -34,6 +34,7 @@ struct ModelConfig
     ggml_type cache_type_k = GGML_TYPE_F16;
     ggml_type cache_type_v = GGML_TYPE_F16;
     std::string lora_path = "";
+    std::string grammar = "";
 };
 
 // Forward declaration

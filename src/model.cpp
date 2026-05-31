@@ -143,6 +143,8 @@ Model::initialize_context(const ModelConfig& model_config)
                             llama_sampler_init_temp(model_config.temp));
     llama_sampler_chain_add(sampler_,
                             llama_sampler_init_dist(model_config.seed));
+    llama_sampler_chain_add(sampler_,
+                            llama_sampler_init_grammar(weights_->get_vocab(), model_config.grammar.c_str(), "root"));
 
     if (!model_config.lora_path.empty()) {
         lora_ = llama_adapter_lora_init(weights_->get_model(), model_config.lora_path.c_str());

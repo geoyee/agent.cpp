@@ -103,6 +103,14 @@ class MathAgent
         model_config.n_ctx = 10240;
         model_config.temp = 0.0F;
         model_config.lora_path = lora_path;
+        /*model_config.grammar = R"gbnf(
+            root   ::= expr "=" ws expr
+            expr   ::= term (ws ("+" | "-") ws term)*
+            term   ::= factor (ws ("*" | "/") ws factor)*
+            factor ::= number | "(" ws expr ws ")"
+            number ::= [0-9]+
+            ws     ::= [ \t]*
+        )gbnf";*/
         auto model =
           agent_cpp::Model::create_with_weights(weights, model_config);
 
@@ -211,9 +219,14 @@ print_usage(const char* program)
 {
     fprintf(stderr, "Usage: %s -m <model_path>\n", program);
     fprintf(stderr, "\nOptions:\n");
-    fprintf(stderr, "  -m <path>           Path to GGUF model file (required)\n");
-    fprintf(stderr, "  --lora-main <path>  Path to GGUF adapter file of main agent (optional)\n");
-    fprintf(stderr, "  --lora-math <path>  Path to GGUF adapter file of math agent (optional)\n");
+    fprintf(stderr,
+            "  -m <path>           Path to GGUF model file (required)\n");
+    fprintf(stderr,
+            "  --lora-main <path>  Path to GGUF adapter file of main agent "
+            "(optional)\n");
+    fprintf(stderr,
+            "  --lora-math <path>  Path to GGUF adapter file of math agent "
+            "(optional)\n");
     fprintf(stderr, "  -h                  Show this help message\n");
     fprintf(stderr, "\nExample:\n");
     fprintf(stderr, "  %s -m granite-4.0-micro-Q8_0.gguf\n", program);
@@ -254,7 +267,8 @@ main(int argc, char** argv)
         MathAgent math_agent(weights, "math_agent.cache", math_lora_path);
 
         fprintf(stderr, "Creating Main Agent (orchestrator)...\n");
-        MainAgent main_agent(weights, &math_agent, "main_agent.cache", main_lora_path);
+        MainAgent main_agent(
+          weights, &math_agent, "main_agent.cache", main_lora_path);
 
         fprintf(stderr, "\nMulti-Agent System Ready\n");
         fprintf(stderr, "\nTry asking math questions like:\n");
