@@ -57,6 +57,9 @@ Model::create_with_weights(std::shared_ptr<ModelWeights> weights,
 
 Model::~Model()
 {
+    if (lora_ != nullptr) {
+        llama_adapter_lora_free(lora_);
+    }
     if (sampler_ != nullptr) {
         llama_sampler_free(sampler_);
     }
@@ -70,12 +73,14 @@ Model::Model(Model&& other) noexcept
   : weights_(std::move(other.weights_))
   , ctx_(other.ctx_)
   , sampler_(other.sampler_)
+  , lora_(other.lora_)
   , processed_tokens_(std::move(other.processed_tokens_))
   , n_past_(other.n_past_)
   , config_(other.config_)
 {
     other.ctx_ = nullptr;
     other.sampler_ = nullptr;
+    other.lora_ = nullptr;
     other.n_past_ = 0;
 }
 
@@ -83,6 +88,9 @@ Model&
 Model::operator=(Model&& other) noexcept
 {
     if (this != &other) {
+        if (lora_ != nullptr) {
+            llama_adapter_lora_free(lora_);
+        }
         if (sampler_ != nullptr) {
             llama_sampler_free(sampler_);
         }
@@ -93,12 +101,14 @@ Model::operator=(Model&& other) noexcept
         weights_ = std::move(other.weights_);
         ctx_ = other.ctx_;
         sampler_ = other.sampler_;
+        lora_ = other.lora_;
         processed_tokens_ = std::move(other.processed_tokens_);
         n_past_ = other.n_past_;
         config_ = other.config_;
 
         other.ctx_ = nullptr;
         other.sampler_ = nullptr;
+        other.lora_ = nullptr;
         other.n_past_ = 0;
     }
     return *this;
@@ -133,6 +143,13 @@ Model::initialize_context(const ModelConfig& model_config)
                             llama_sampler_init_temp(model_config.temp));
     llama_sampler_chain_add(sampler_,
                             llama_sampler_init_dist(model_config.seed));
+
+    if (!model_config.lora_path.empty()) {
+        lora_ = llama_adapter_lora_init(weights_->get_model(), model_config.lora_path.c_str());
+        if (lora_ == nullptr) {
+            throw Error("unable to load adapter from '" + model_config.lora_path + "'");
+        }
+    }
 }
 
 std::vector<llama_token>

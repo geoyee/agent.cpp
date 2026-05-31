@@ -33,6 +33,7 @@ struct ModelConfig
       static_cast<int>(std::max(1u, std::thread::hardware_concurrency() - 1));
     ggml_type cache_type_k = GGML_TYPE_F16;
     ggml_type cache_type_v = GGML_TYPE_F16;
+    std::string lora_path = "";
 };
 
 // Forward declaration
@@ -184,6 +185,7 @@ class Model
     std::shared_ptr<ModelWeights> weights_;
     llama_context* ctx_ = nullptr;
     llama_sampler* sampler_ = nullptr;
+    llama_adapter_lora* lora_ = nullptr;
     std::vector<llama_token> processed_tokens_; // Track tokens in KV cache
     int n_past_ = 0;                            // Track position in KV cache
     ModelConfig config_;

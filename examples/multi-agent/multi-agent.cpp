@@ -96,11 +96,13 @@ class MathAgent
 
   public:
     MathAgent(std::shared_ptr<agent_cpp::ModelWeights> weights,
-              const std::string& cache_path)
+              const std::string& cache_path,
+              const std::string& lora_path)
     {
         auto model_config = agent_cpp::ModelConfig{};
         model_config.n_ctx = 10240;
         model_config.temp = 0.0F;
+        model_config.lora_path = lora_path;
         auto model =
           agent_cpp::Model::create_with_weights(weights, model_config);
 
@@ -176,11 +178,13 @@ class MainAgent
   public:
     MainAgent(std::shared_ptr<agent_cpp::ModelWeights> weights,
               MathAgent* math_agent,
-              const std::string& cache_path)
+              const std::string& cache_path,
+              const std::string& lora_path)
     {
         auto model_config = agent_cpp::ModelConfig{};
         model_config.n_ctx = 10240;
         model_config.temp = 0.0F;
+        model_config.lora_path = lora_path;
         auto model =
           agent_cpp::Model::create_with_weights(weights, model_config);
 
@@ -207,8 +211,10 @@ print_usage(const char* program)
 {
     fprintf(stderr, "Usage: %s -m <model_path>\n", program);
     fprintf(stderr, "\nOptions:\n");
-    fprintf(stderr, "  -m <path>  Path to GGUF model file (required)\n");
-    fprintf(stderr, "  -h         Show this help message\n");
+    fprintf(stderr, "  -m <path>           Path to GGUF model file (required)\n");
+    fprintf(stderr, "  --lora-main <path>  Path to GGUF adapter file of main agent (optional)\n");
+    fprintf(stderr, "  --lora-math <path>  Path to GGUF adapter file of math agent (optional)\n");
+    fprintf(stderr, "  -h                  Show this help message\n");
     fprintf(stderr, "\nExample:\n");
     fprintf(stderr, "  %s -m granite-4.0-micro-Q8_0.gguf\n", program);
 }
@@ -217,10 +223,16 @@ int
 main(int argc, char** argv)
 {
     std::string model_path;
+    std::string main_lora_path = "";
+    std::string math_lora_path = "";
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
             model_path = argv[++i];
+        } else if (strcmp(argv[i], "--lora-main") == 0 && i + 1 < argc) {
+            main_lora_path = argv[++i];
+        } else if (strcmp(argv[i], "--lora-math") == 0 && i + 1 < argc) {
+            math_lora_path = argv[++i];
         } else if (strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -239,10 +251,10 @@ main(int argc, char** argv)
         auto weights = agent_cpp::ModelWeights::create(model_path);
 
         fprintf(stderr, "Creating Math Agent (specialized sub-agent)...\n");
-        MathAgent math_agent(weights, "math_agent.cache");
+        MathAgent math_agent(weights, "math_agent.cache", math_lora_path);
 
         fprintf(stderr, "Creating Main Agent (orchestrator)...\n");
-        MainAgent main_agent(weights, &math_agent, "main_agent.cache");
+        MainAgent main_agent(weights, &math_agent, "main_agent.cache", main_lora_path);
 
         fprintf(stderr, "\nMulti-Agent System Ready\n");
         fprintf(stderr, "\nTry asking math questions like:\n");
