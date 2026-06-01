@@ -142,8 +142,12 @@ Model::initialize_context(const ModelConfig& model_config)
     llama_sampler_chain_add(sampler_,
                             llama_sampler_init_temp(model_config.temp));
     if (!model_config.grammar.empty()) {
-        llama_sampler_chain_add(sampler_,
-                                llama_sampler_init_grammar(weights_->get_vocab(), model_config.grammar.c_str(), "root"));
+        auto* grammar_sampler = llama_sampler_init_grammar(
+            weights_->get_vocab(), model_config.grammar.c_str(), "root");
+        if (grammar_sampler == nullptr) {
+            throw ModelError("failed to initialize grammar sampler - check GBNF syntax");
+        }
+        llama_sampler_chain_add(sampler_, grammar_sampler);
     }
     llama_sampler_chain_add(sampler_,
                             llama_sampler_init_dist(model_config.seed));

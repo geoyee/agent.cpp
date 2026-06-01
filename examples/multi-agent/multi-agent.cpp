@@ -89,6 +89,11 @@ class MathAgent
           "3. Show your work step by step\n"
           "4. Double-check your results\n"
           "5. Be precise - avoid rounding unless explicitly asked\n\n"
+          "Output Format:\n"
+          "- Present your entire solution as a Markdown unordered list\n"
+          "- Each step of your reasoning or calculation must be a separate "
+          "list item starting with '- '\n"
+          "- Do not include any text outside of this list structure\n\n"
           "You have access to a calculator that can: add, subtract, multiply, "
           "and divide.";
         return instructions;
@@ -96,21 +101,15 @@ class MathAgent
 
   public:
     MathAgent(std::shared_ptr<agent_cpp::ModelWeights> weights,
-              const std::string& cache_path,
-              const std::string& lora_path)
+              const std::string& cache_path)
     {
         auto model_config = agent_cpp::ModelConfig{};
         model_config.n_ctx = 10240;
         model_config.temp = 0.0F;
-        model_config.lora_path = lora_path;
-        /*model_config.grammar = R"gbnf(
-            root   ::= expr "=" ws expr
-            expr   ::= term (ws ("+" | "-") ws term)*
-            term   ::= factor (ws ("*" | "/") ws factor)*
-            factor ::= number | "(" ws expr ws ")"
-            number ::= [0-9]+
-            ws     ::= [ \t]*
-        )gbnf";*/
+        model_config.grammar = R"gbnf(
+            root ::= line ("\n" line)* "\n"?
+            line ::= "- " [^\n]* | [^-] [^\n]* | "-" [^ \n] [^\n]*
+        )gbnf";
         auto model =
           agent_cpp::Model::create_with_weights(weights, model_config);
 
@@ -186,13 +185,11 @@ class MainAgent
   public:
     MainAgent(std::shared_ptr<agent_cpp::ModelWeights> weights,
               MathAgent* math_agent,
-              const std::string& cache_path,
-              const std::string& lora_path)
+              const std::string& cache_path)
     {
         auto model_config = agent_cpp::ModelConfig{};
         model_config.n_ctx = 10240;
         model_config.temp = 0.0F;
-        model_config.lora_path = lora_path;
         auto model =
           agent_cpp::Model::create_with_weights(weights, model_config);
 
@@ -219,15 +216,8 @@ print_usage(const char* program)
 {
     fprintf(stderr, "Usage: %s -m <model_path>\n", program);
     fprintf(stderr, "\nOptions:\n");
-    fprintf(stderr,
-            "  -m <path>           Path to GGUF model file (required)\n");
-    fprintf(stderr,
-            "  --lora-main <path>  Path to GGUF adapter file of main agent "
-            "(optional)\n");
-    fprintf(stderr,
-            "  --lora-math <path>  Path to GGUF adapter file of math agent "
-            "(optional)\n");
-    fprintf(stderr, "  -h                  Show this help message\n");
+    fprintf(stderr, "  -m <path>  Path to GGUF model file (required)\n");
+    fprintf(stderr, "  -h         Show this help message\n");
     fprintf(stderr, "\nExample:\n");
     fprintf(stderr, "  %s -m granite-4.0-micro-Q8_0.gguf\n", program);
 }
@@ -236,16 +226,10 @@ int
 main(int argc, char** argv)
 {
     std::string model_path;
-    std::string main_lora_path = "";
-    std::string math_lora_path = "";
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
             model_path = argv[++i];
-        } else if (strcmp(argv[i], "--lora-main") == 0 && i + 1 < argc) {
-            main_lora_path = argv[++i];
-        } else if (strcmp(argv[i], "--lora-math") == 0 && i + 1 < argc) {
-            math_lora_path = argv[++i];
         } else if (strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -264,11 +248,10 @@ main(int argc, char** argv)
         auto weights = agent_cpp::ModelWeights::create(model_path);
 
         fprintf(stderr, "Creating Math Agent (specialized sub-agent)...\n");
-        MathAgent math_agent(weights, "math_agent.cache", math_lora_path);
+        MathAgent math_agent(weights, "math_agent.cache");
 
         fprintf(stderr, "Creating Main Agent (orchestrator)...\n");
-        MainAgent main_agent(
-          weights, &math_agent, "main_agent.cache", main_lora_path);
+        MainAgent main_agent(weights, &math_agent, "main_agent.cache");
 
         fprintf(stderr, "\nMulti-Agent System Ready\n");
         fprintf(stderr, "\nTry asking math questions like:\n");
