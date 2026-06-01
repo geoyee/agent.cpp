@@ -57,8 +57,8 @@ Model::create_with_weights(std::shared_ptr<ModelWeights> weights,
 
 Model::~Model()
 {
-    if (lora_ != nullptr) {
-        llama_adapter_lora_free(lora_);
+    if (lora_ != nullptr && ctx_ != nullptr) {
+        llama_rm_adapter_lora(ctx_, lora_);
     }
     if (sampler_ != nullptr) {
         llama_sampler_free(sampler_);
@@ -88,8 +88,8 @@ Model&
 Model::operator=(Model&& other) noexcept
 {
     if (this != &other) {
-        if (lora_ != nullptr) {
-            llama_adapter_lora_free(lora_);
+        if (lora_ != nullptr && ctx_ != nullptr) {
+            llama_rm_adapter_lora(ctx_, lora_);
         }
         if (sampler_ != nullptr) {
             llama_sampler_free(sampler_);
@@ -141,15 +141,21 @@ Model::initialize_context(const ModelConfig& model_config)
                             llama_sampler_init_min_p(model_config.min_p, 1));
     llama_sampler_chain_add(sampler_,
                             llama_sampler_init_temp(model_config.temp));
+    if (!model_config.grammar.empty()) {
+        llama_sampler_chain_add(sampler_,
+                                llama_sampler_init_grammar(weights_->get_vocab(), model_config.grammar.c_str(), "root"));
+    }
     llama_sampler_chain_add(sampler_,
                             llama_sampler_init_dist(model_config.seed));
-    llama_sampler_chain_add(sampler_,
-                            llama_sampler_init_grammar(weights_->get_vocab(), model_config.grammar.c_str(), "root"));
 
     if (!model_config.lora_path.empty()) {
         lora_ = llama_adapter_lora_init(weights_->get_model(), model_config.lora_path.c_str());
         if (lora_ == nullptr) {
-            throw Error("unable to load adapter from '" + model_config.lora_path + "'");
+            throw ModelError("unable to load adapter from '" + model_config.lora_path + "'");
+        }
+        int32_t result = llama_set_adapter_lora(ctx_, lora_, model_config.lora_scale);
+        if (result != 0) {
+            throw ModelError("failed to apply LoRA adapter to context");
         }
     }
 }
