@@ -109,6 +109,7 @@ class MathAgent
         tools.push_back(std::make_unique<CalculatorTool>());
 
         std::vector<std::unique_ptr<agent_cpp::Callback>> callbacks;
+        callbacks.push_back(std::make_unique<LoggingCallback>());
         callbacks.push_back(std::make_unique<ErrorRecoveryCallback>());
 
         agent_ = std::make_unique<agent_cpp::Agent>(std::move(model),
