@@ -86,5 +86,5 @@ After giving away 47 apples from 156, you have **109 apples remaining**.
 
 >
 
-👋 Goodbye!
+Goodbye!
 ```

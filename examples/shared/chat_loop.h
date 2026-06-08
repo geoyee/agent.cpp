@@ -52,7 +52,7 @@ run_chat_loop(agent_cpp::Agent& agent)
         printf("\n");
     }
 
-    printf("\n👋 Goodbye!\n");
+    printf("\nGoodbye!\n");
 }
 
 #ifdef _WIN32

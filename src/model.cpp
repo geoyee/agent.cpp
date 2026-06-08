@@ -134,6 +134,8 @@ Model::initialize_context(const ModelConfig& model_config)
 
     sampler_ = llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(sampler_,
+                            llama_sampler_init_penalties(64, 1.1F, 0.5F, 0.0F));
+    llama_sampler_chain_add(sampler_,
                             llama_sampler_init_top_k(model_config.top_k));
     llama_sampler_chain_add(sampler_,
                             llama_sampler_init_top_p(model_config.top_p, 1));
@@ -273,7 +275,9 @@ Model::generate_from_tokens(const std::vector<llama_token>& all_tokens,
     }
 
     llama_token new_token_id{};
-    while (true) {
+    const int max_new_tokens = config_.max_new_tokens;
+    int generated_tokens = 0;
+    while (generated_tokens < max_new_tokens) {
         new_token_id = llama_sampler_sample(sampler_, ctx_, -1);
 
         if (llama_vocab_is_eog(vocab, new_token_id)) {
@@ -304,6 +308,22 @@ Model::generate_from_tokens(const std::vector<llama_token>& all_tokens,
 
         n_past_++;
         processed_tokens_.push_back(new_token_id);
+        generated_tokens++;
+
+        // Detect repetition loop (common with small models at temp=0)
+        if (generated_tokens > 20 && response.size() >= 90) {
+            std::string tail = response.substr(response.size() - 90);
+            std::string pattern = tail.substr(0, 30);
+            int count = 0;
+            size_t pos = 0;
+            while ((pos = tail.find(pattern, pos)) != std::string::npos) {
+                count++;
+                pos += pattern.size();
+            }
+            if (count >= 3) {
+                break;
+            }
+        }
     }
 
     return response;

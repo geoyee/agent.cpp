@@ -36,6 +36,7 @@ struct ModelConfig
     std::string lora_path = "";
     float lora_scale = 1.0f;
     std::string grammar = "";
+    int max_new_tokens = 256;
 };
 
 // Forward declaration
