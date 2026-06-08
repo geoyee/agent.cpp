@@ -7,7 +7,8 @@
 namespace agent_cpp {
 
 std::shared_ptr<ModelWeights>
-ModelWeights::create(const std::string& model_path)
+ModelWeights::create(const std::string& model_path,
+                     const std::string& chat_template_override)
 {
     std::shared_ptr<ModelWeights> weights(new ModelWeights());
 
@@ -21,7 +22,7 @@ ModelWeights::create(const std::string& model_path)
     }
 
     auto tmpls = common_chat_templates_init(weights->model_,
-                                            /* chat_template_override */ "");
+                                            chat_template_override);
     if (!tmpls) {
         throw ModelError("failed to initialize chat templates");
     }

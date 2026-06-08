@@ -56,9 +56,11 @@ class ModelWeights
   public:
     /// @brief Load model weights from a GGUF file
     /// @param model_path Path to the GGUF model file
+    /// @param chat_template_override Chat template of GGUF model file
     /// @return Shared pointer to the loaded weights
     /// @throws agent_cpp::ModelError if loading fails
-    static std::shared_ptr<ModelWeights> create(const std::string& model_path);
+    static std::shared_ptr<ModelWeights> create(const std::string& model_path,
+                                                const std::string& chat_template_override = "");
 
     ~ModelWeights();
 
