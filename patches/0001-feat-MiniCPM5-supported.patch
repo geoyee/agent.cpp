@@ -1,0 +1,177 @@
+From 8ee98ed9e4567ecc0df7135452ad30eb8484e672 Mon Sep 17 00:00:00 2001
+From: geoyee <geoyee@yeah.net>
+Date: Tue, 9 Jun 2026 13:15:17 +0800
+Subject: [PATCH] feat: MiniCPM5 supported
+
+---
+ common/chat-parser.cpp | 17 ++++++++++++++
+ common/chat.cpp        | 51 ++++++++++++++++++++++++++++++++++++++++++
+ common/chat.h          |  1 +
+ common/jinja/value.cpp | 28 +++++++++++++++++++++++
+ 4 files changed, 97 insertions(+)
+
+diff --git a/common/chat-parser.cpp b/common/chat-parser.cpp
+index 29819e48d..e62240221 100644
+--- a/common/chat-parser.cpp
++++ b/common/chat-parser.cpp
+@@ -1515,6 +1515,20 @@ static void common_chat_parse_exaone_moe(common_chat_msg_parser & builder) {
+     }
+ }
+ 
++static void common_chat_parse_minicpm5(common_chat_msg_parser & builder) {
++    static const xml_tool_call_format form {
++        /* form.scope_start = */ "",
++        /* form.tool_start  = */ "<function name=\"",
++        /* form.tool_sep    = */ "\">",
++        /* form.key_start   = */ "<param name=\"",
++        /* form.key_val_sep = */ "\">",
++        /* form.val_end     = */ "</param>",
++        /* form.tool_end    = */ "</function>",
++        /* form.scope_end   = */ "",
++    };
++    builder.consume_reasoning_with_xml_tool_calls(form, "<think>", "</think>");
++}
++
+ static void common_chat_parse_content_only(common_chat_msg_parser & builder) {
+     builder.try_parse_reasoning("<think>", "</think>");
+     builder.add_content(builder.consume_rest());
+@@ -1605,6 +1619,9 @@ static void common_chat_parse(common_chat_msg_parser & builder) {
+         case COMMON_CHAT_FORMAT_EXAONE_MOE:
+             common_chat_parse_exaone_moe(builder);
+             break;
++        case COMMON_CHAT_FORMAT_MINICPM5:
++            common_chat_parse_minicpm5(builder);
++            break;
+         default:
+             throw std::runtime_error(std::string("Unsupported format: ") + common_chat_format_name(builder.syntax().format));
+     }
+diff --git a/common/chat.cpp b/common/chat.cpp
+index eeb38ad06..4c02e98c9 100644
+--- a/common/chat.cpp
++++ b/common/chat.cpp
+@@ -699,6 +699,7 @@ const char * common_chat_format_name(common_chat_format format) {
+         case COMMON_CHAT_FORMAT_XIAOMI_MIMO: return "Xiaomi MiMo";
+         case COMMON_CHAT_FORMAT_SOLAR_OPEN: return "Solar Open";
+         case COMMON_CHAT_FORMAT_EXAONE_MOE: return "EXAONE MoE";
++        case COMMON_CHAT_FORMAT_MINICPM5: return "MiniCPM5";
+         case COMMON_CHAT_FORMAT_PEG_SIMPLE: return "peg-simple";
+         case COMMON_CHAT_FORMAT_PEG_NATIVE: return "peg-native";
+         case COMMON_CHAT_FORMAT_PEG_CONSTRUCTED: return "peg-constructed";
+@@ -1879,6 +1880,47 @@ static common_chat_params common_chat_params_init_qwen3_coder_xml(const common_c
+     return data;
+ }
+ 
++static common_chat_params common_chat_params_init_minicpm5(const common_chat_template & tmpl, const struct templates_params & params) {
++    common_chat_params data;
++    data.grammar_lazy = params.tools.is_array() && !params.tools.empty() && params.tool_choice != COMMON_CHAT_TOOL_CHOICE_REQUIRED;
++
++    data.prompt = apply(tmpl, params);
++    data.format = COMMON_CHAT_FORMAT_MINICPM5;
++
++    // Handle thinking tags based on prompt ending
++    if (string_ends_with(data.prompt, "<think>\n")) {
++        if (!params.enable_thinking) {
++            data.prompt += "</think>\n\n";
++        } else {
++            data.thinking_forced_open = true;
++        }
++    }
++
++    data.preserved_tokens = {
++        "<think>",
++        "</think>",
++        "<function name=",
++        "",
++        "<param name=",
++        "</param>",
++    };
++
++    // build grammar for tool call
++    static const xml_tool_call_format form {
++        /* form.scope_start = */ "",
++        /* form.tool_start  = */ "<function name=\"",
++        /* form.tool_sep    = */ "\">",
++        /* form.key_start   = */ "<param name=\"",
++        /* form.key_val_sep = */ "\">",
++        /* form.val_end     = */ "</param>",
++        /* form.tool_end    = */ "</function>",
++        /* form.scope_end   = */ "",
++    };
++    build_grammar_xml_tool_call(data, params.tools, form);
++
++    return data;
++}
++
+ static common_chat_params common_chat_params_init_kimi_k2(const common_chat_template & tmpl, const struct templates_params & params) {
+     common_chat_params data;
+     data.grammar_lazy = params.tools.is_array() && !params.tools.empty() && params.tool_choice != COMMON_CHAT_TOOL_CHOICE_REQUIRED;
+@@ -2954,6 +2996,15 @@ static common_chat_params common_chat_templates_apply_jinja(
+         return common_chat_params_init_glm_4_5(tmpl, params);
+     }
+ 
++    // MiniCPM5 XML format detection (must come before Hermes 2 Pro)
++    // MiniCPM5 uses <function name="..."><param name="...">...</param></function>
++    if (src.find("<function name=\"") != std::string::npos &&
++        src.find("<param name=\"") != std::string::npos &&
++        params.json_schema.is_null()) {
++        workaround::func_args_not_string(params.messages);
++        return common_chat_params_init_minicpm5(tmpl, params);
++    }
++
+     // Qwen3-Coder XML format detection (must come before Hermes 2 Pro)
+     // Detect via explicit XML markers unique to Qwen3-Coder to avoid false positives in other templates.
+     // Require presence of <tool_call>, <function=...>, and <parameter=...> blocks.
+diff --git a/common/chat.h b/common/chat.h
+index 24aa4aab5..b4506c9a3 100644
+--- a/common/chat.h
++++ b/common/chat.h
+@@ -133,6 +133,7 @@ enum common_chat_format {
+     COMMON_CHAT_FORMAT_XIAOMI_MIMO,
+     COMMON_CHAT_FORMAT_SOLAR_OPEN,
+     COMMON_CHAT_FORMAT_EXAONE_MOE,
++    COMMON_CHAT_FORMAT_MINICPM5,
+ 
+     // These are intended to be parsed by the PEG parser
+     COMMON_CHAT_FORMAT_PEG_SIMPLE,
+diff --git a/common/jinja/value.cpp b/common/jinja/value.cpp
+index d2ed82426..9af6598be 100644
+--- a/common/jinja/value.cpp
++++ b/common/jinja/value.cpp
+@@ -904,6 +904,34 @@ const func_builtins & value_array_t::get_builtins() const {
+         {"unique", [](const func_args &) -> value {
+             throw not_implemented_exception("Array unique builtin not implemented");
+         }},
++        {"min", [](const func_args & args) -> value {
++            args.ensure_vals<value_array>();
++            const auto & arr = args.get_pos(0)->as_array();
++            if (arr.empty()) {
++                return mk_val<value_undefined>();
++            }
++            value result = arr[0];
++            for (size_t i = 1; i < arr.size(); ++i) {
++                if (value_compare(arr[i], result, value_compare_op::lt)) {
++                    result = arr[i];
++                }
++            }
++            return result;
++        }},
++        {"max", [](const func_args & args) -> value {
++            args.ensure_vals<value_array>();
++            const auto & arr = args.get_pos(0)->as_array();
++            if (arr.empty()) {
++                return mk_val<value_undefined>();
++            }
++            value result = arr[0];
++            for (size_t i = 1; i < arr.size(); ++i) {
++                if (value_compare(arr[i], result, value_compare_op::gt)) {
++                    result = arr[i];
++                }
++            }
++            return result;
++        }},
+     };
+     return builtins;
+ }
+-- 
+2.43.0
+
