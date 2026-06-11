@@ -243,12 +243,16 @@ Model::generate_from_tokens(const std::vector<llama_token>& all_tokens,
         common_prefix++;
     }
 
-    // If tokens diverged, clear KV cache from divergence point onwards
     if (common_prefix < processed_tokens_.size()) {
+        // New session detected: processed_tokens_ diverges from the new
+        // prompt (e.g. different chat turn or fresh sub-agent invocation).
+        // Full KV cache rebuild + sampler reset to isolate stale state.
         llama_memory_t mem = llama_get_memory(ctx_);
-        llama_memory_seq_rm(mem, 0, common_prefix, -1);
-        processed_tokens_.resize(common_prefix);
-        n_past_ = common_prefix;
+        llama_memory_seq_rm(mem, 0, 0, -1);
+        processed_tokens_.clear();
+        n_past_ = 0;
+        common_prefix = 0;
+        llama_sampler_reset(sampler_);
     }
 
     size_t i = common_prefix;
